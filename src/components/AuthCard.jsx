@@ -4,6 +4,8 @@ import axiosClient from '../api/axiosClient';
 import { loginSuccess } from '../redux/authSlice';
 import FeedbackAlert from './FeedbackAlert';
 import FormField from './FormField';
+import Icon from './Icon';
+import { toast } from '../toast';
 
 export default function AuthCard() {
   // Formulaire contrôlé : chaque champ est relié à un useState
@@ -32,6 +34,7 @@ export default function AuthCard() {
 
       // 2. Ranger l'utilisateur et son Token JWT dans Redux + localStorage
       dispatch(loginSuccess(response.data));
+      toast(`Bienvenue, ${response.data.user?.name || ''} !`);
     } catch (err) {
       setErrorMsg(
         err.response?.data?.message || 'Erreur de connexion au serveur Express.'
@@ -56,11 +59,12 @@ export default function AuthCard() {
   return (
     <section className="form-card auth-card">
       <div className="form-header">
-        <span className="lock-pill">Espace Membre Sécurisé (JWT)</span>
-        <h3>{isRegister ? 'Créer un Compte Employé' : 'Connexion Requise pour Gérer'}</h3>
+        <span className="lock-pill"><Icon name="lock" size={12} /> Espace membre sécurisé</span>
+        <h3>{isRegister ? 'Créer un compte employé' : 'Bon retour parmi nous'}</h3>
         <p>
-          Connectez-vous pour obtenir votre Token JWT et débloquer l'ajout, la modification
-          et la suppression des tâches.
+          {isRegister
+            ? 'Rejoignez votre équipe pour créer et suivre vos tâches.'
+            : 'Connectez-vous pour créer, modifier, commenter et supprimer des tâches.'}
         </p>
       </div>
 
@@ -121,16 +125,18 @@ export default function AuthCard() {
         </FormField>
 
         <button type="submit" className="btn-submit" disabled={loading}>
-          {loading
-            ? 'Vérification...'
-            : isRegister
-              ? "S'inscrire (Obtenir Token JWT)"
-              : 'Se Connecter (Obtenir Token JWT)'}
+          {loading ? (
+            <><span className="btn-spinner" /> Vérification...</>
+          ) : isRegister ? (
+            <>Créer mon compte <Icon name="arrow" size={16} /></>
+          ) : (
+            <>Se connecter <Icon name="arrow" size={16} /></>
+          )}
         </button>
 
         {!isRegister && (
           <button type="button" className="btn-demo" onClick={fillDemoAccount}>
-            Remplir Compte Démo (admin@pme.tn / 123456)
+            <Icon name="sparkle" size={14} /> Utiliser le compte démo
           </button>
         )}
       </form>

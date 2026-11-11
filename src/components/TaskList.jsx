@@ -2,19 +2,42 @@ import React, { useState, useEffect } from 'react';
 import { useSelector, useDispatch } from 'react-redux';
 import axiosClient from '../api/axiosClient';
 import { setTasks, setLoading, setError } from '../redux/taskSlice';
+import { changeTaskStatus } from '../redux/taskActions';
 import { STATUSES, PRIORITIES, STATUS_LABELS } from '../constants';
-import TaskCard from './TaskCard';
+import { toast } from '../toast';
+import { toVariant } from './Badge';
+import TaskCard, { DRAG_TYPE } from './TaskCard';
+import Icon from './Icon';
 
-export default function TaskList() {
+const readView = () => {
+  try {
+    return localStorage.getItem('view') === 'board' ? 'board' : 'list';
+  } catch (e) {
+    return 'list';
+  }
+};
+
+export default function TaskList({ onNew }) {
   const dispatch = useDispatch();
 
   // 1. État Global (Redux) : liste des tâches, chargement et erreur
   const { items, loading, error } = useSelector((state) => state.tasks);
+  const { user } = useSelector((state) => state.auth);
 
-  // 2. État Local (useState) : filtres sélectionnés + recherche
+  // 2. État Local (useState) : filtres, recherche, vue (liste / tableau)
   const [selectedStatus, setSelectedStatus] = useState('');
   const [selectedPriority, setSelectedPriority] = useState('');
   const [query, setQuery] = useState('');
+  const [view, setView] = useState(readView);
+  const [dragOver, setDragOver] = useState(null);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('view', view);
+    } catch (e) {
+      /* ignore */
+    }
+  }, [view]);
 
   // Fonction simple pour charger les tâches avec Axios et les ranger dans Redux
   const chargerTaches = async () => {
@@ -32,16 +55,16 @@ export default function TaskList() {
     chargerTaches();
   }, []);
 
-  // Filtrage JavaScript simple
+  // Filtrage JavaScript simple (le tableau ignore le filtre de statut : chaque colonne EST un statut)
   const q = query.trim().toLowerCase();
-  const filteredItems = items.filter(
+  const baseItems = items.filter(
     (t) =>
-      (!selectedStatus || t.status === selectedStatus) &&
       (!selectedPriority || t.priority === selectedPriority) &&
       (!q ||
         t.title.toLowerCase().includes(q) ||
         (t.description || '').toLowerCase().includes(q))
   );
+  const filteredItems = baseItems.filter((t) => !selectedStatus || t.status === selectedStatus);
 
   const doneCount = items.filter((t) => t.status === 'Terminee').length;
   const pct = items.length ? Math.round((doneCount / items.length) * 100) : 0;
@@ -49,20 +72,68 @@ export default function TaskList() {
   const countFor = (status) =>
     status ? items.filter((t) => t.status === status).length : items.length;
 
+  // Glisser-déposer : on lâche une carte dans une colonne -> PUT du nouveau statut
+  const acceptsDrag = (e) => e.dataTransfer.types.includes(DRAG_TYPE);
+
+  const handleDrop = async (e, status) => {
+    e.preventDefault();
+    setDragOver(null);
+    const id = e.dataTransfer.getData(DRAG_TYPE);
+    const task = items.find((t) => t._id === id);
+    if (!task || task.status === status) return;
+    try {
+      await dispatch(changeTaskStatus(task, status));
+      toast(`« ${task.title} » → ${STATUS_LABELS[status]}`);
+    } catch (err) {
+      toast(err.response?.data?.message || 'Action non autorisée.', 'error');
+    }
+  };
+
+  const showList = !loading && view === 'list' && filteredItems.length > 0;
+  const showBoard = !loading && !error && view === 'board' && items.length > 0;
+  const showEmpty = !loading && !error && (view === 'list' ? filteredItems.length === 0 : items.length === 0);
+
   return (
-    <section className="list-section">
+    <section className="list-section" id="tasks">
       <div className="list-header">
         <div>
-          <h3>Tâches Synchronisées avec l'API</h3>
+          <h3>Tâches de l'équipe</h3>
           <p className="list-subtitle">
-            Données MongoDB récupérées via Axios (auteur affiché grâce à populate)
+            Synchronisées en direct avec l'API Express & MongoDB
           </p>
+        </div>
+
+        <div className="list-header-actions">
+          <div className={`segmented view-${view}`} role="tablist" aria-label="Mode d'affichage">
+            <button
+              role="tab"
+              aria-selected={view === 'list'}
+              className={`seg-btn ${view === 'list' ? 'active' : ''}`}
+              onClick={() => setView('list')}
+            >
+              <Icon name="list" size={16} /> Liste
+            </button>
+            <button
+              role="tab"
+              aria-selected={view === 'board'}
+              className={`seg-btn ${view === 'board' ? 'active' : ''}`}
+              onClick={() => setView('board')}
+            >
+              <Icon name="board" size={16} /> Tableau
+            </button>
+          </div>
+
+          {onNew && (
+            <button className="btn-primary small" onClick={onNew}>
+              <Icon name="plus" size={16} /> Nouvelle tâche
+            </button>
+          )}
         </div>
       </div>
 
       <div className="toolbar">
         <label className="search">
-          <span aria-hidden="true">⌕</span>
+          <Icon name="search" size={17} />
           <input
             type="search"
             placeholder="Rechercher une tâche..."
@@ -72,7 +143,11 @@ export default function TaskList() {
         </label>
 
         <div className="filter-box">
-          <select value={selectedPriority} onChange={(e) => setSelectedPriority(e.target.value)}>
+          <select
+            value={selectedPriority}
+            onChange={(e) => setSelectedPriority(e.target.value)}
+            aria-label="Filtrer par priorité"
+          >
             <option value="">Toutes priorités</option>
             {PRIORITIES.map((p) => (
               <option key={p} value={p}>{p}</option>
@@ -81,20 +156,22 @@ export default function TaskList() {
         </div>
       </div>
 
-      <div className="chips" role="tablist" aria-label="Filtrer par statut">
-        {['', ...STATUSES].map((s) => (
-          <button
-            key={s || 'all'}
-            role="tab"
-            aria-selected={selectedStatus === s}
-            className={selectedStatus === s ? 'chip active' : 'chip'}
-            onClick={() => setSelectedStatus(s)}
-          >
-            {s ? STATUS_LABELS[s] : 'Toutes'}
-            <em>{countFor(s)}</em>
-          </button>
-        ))}
-      </div>
+      {view === 'list' && (
+        <div className="chips" role="tablist" aria-label="Filtrer par statut">
+          {['', ...STATUSES].map((s) => (
+            <button
+              key={s || 'all'}
+              role="tab"
+              aria-selected={selectedStatus === s}
+              className={selectedStatus === s ? 'chip active' : 'chip'}
+              onClick={() => setSelectedStatus(s)}
+            >
+              {s ? STATUS_LABELS[s] : 'Toutes'}
+              <em key={countFor(s)}>{countFor(s)}</em>
+            </button>
+          ))}
+        </div>
+      )}
 
       {items.length > 0 && (
         <div className="progress">
@@ -113,7 +190,7 @@ export default function TaskList() {
         <div className="error-banner">
           <div className="error-icon">!</div>
           <div className="error-text">
-            <strong>Erreur de Communication avec l'API Express :</strong>
+            <strong>Erreur de communication avec l'API Express</strong>
             <p>{error}</p>
           </div>
           <button className="btn-retry" onClick={chargerTaches}>
@@ -125,8 +202,8 @@ export default function TaskList() {
       {/* CAS 2 : Indicateur de chargement */}
       {loading && (
         <div className="loading-box">
-          <div className="spinner"></div>
-          <p>Chargement des tâches depuis l'API Express...</p>
+          <div className="spinner"><span /><span /><span /></div>
+          <p>Chargement des tâches...</p>
           <div className="skeleton-stack">
             <div className="skeleton" />
             <div className="skeleton" />
@@ -136,19 +213,66 @@ export default function TaskList() {
       )}
 
       {/* CAS 3 : Aucune tâche */}
-      {!loading && !error && filteredItems.length === 0 && (
+      {showEmpty && (
         <div className="empty-box">
+          <div className="empty-art" aria-hidden="true">
+            <span /><span /><span />
+          </div>
           <p>Aucune tâche à afficher</p>
-          <span>Modifiez les filtres ou connectez-vous pour créer une tâche.</span>
+          <span>
+            {user ? 'Modifiez les filtres ou créez une nouvelle tâche.' : 'Modifiez les filtres ou connectez-vous pour créer une tâche.'}
+          </span>
         </div>
       )}
 
-      {/* CAS 4 : Grille des tâches */}
-      {!loading && filteredItems.length > 0 && (
+      {/* CAS 4a : Liste des tâches */}
+      {showList && (
         <div className="articles-grid">
           {filteredItems.map((task, i) => (
             <TaskCard key={task._id} task={task} index={i} />
           ))}
+        </div>
+      )}
+
+      {/* CAS 4b : Tableau Kanban (glisser-déposer entre colonnes) */}
+      {showBoard && (
+        <div className="board">
+          {STATUSES.map((s, ci) => {
+            const col = baseItems.filter((t) => t.status === s);
+            return (
+              <div
+                key={s}
+                className={`board-col ${toVariant('col', s)} ${dragOver === s ? 'drag-over' : ''}`}
+                style={{ '--ci': ci }}
+                onDragOver={(e) => {
+                  if (!acceptsDrag(e)) return;
+                  e.preventDefault();
+                  e.dataTransfer.dropEffect = 'move';
+                  if (dragOver !== s) setDragOver(s);
+                }}
+                onDragLeave={(e) => {
+                  if (!e.currentTarget.contains(e.relatedTarget)) setDragOver(null);
+                }}
+                onDrop={(e) => handleDrop(e, s)}
+              >
+                <header className="board-col-head">
+                  <span className="col-dot" />
+                  {STATUS_LABELS[s]}
+                  <em key={col.length}>{col.length}</em>
+                </header>
+                <div className="board-col-body">
+                  {col.map((task, i) => (
+                    <TaskCard key={task._id} task={task} index={i} compact />
+                  ))}
+                  {col.length === 0 && (
+                    <div className="board-empty">
+                      {user ? 'Déposez une tâche ici' : 'Aucune tâche'}
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
     </section>
