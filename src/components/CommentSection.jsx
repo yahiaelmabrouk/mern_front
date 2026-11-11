@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useSelector } from 'react-redux';
 import axiosClient from '../api/axiosClient';
 import { formatDate } from '../constants';
+import Avatar from './Avatar';
 import FeedbackAlert from './FeedbackAlert';
 
 // Relation 1 -> N : une Tâche possède plusieurs Commentaires
@@ -65,6 +66,7 @@ export default function CommentSection({ taskId }) {
       {comments.map((c) => (
         <div key={c._id} className="comment-item">
           <div className="comment-meta">
+            <Avatar name={c.author?.name || '?'} size={20} />
             <strong>{c.author?.name || 'Utilisateur supprimé'}</strong>
             <span>{formatDate(c.createdAt)}</span>
             {user && (user.id === c.author?._id || user.role === 'Admin') && (

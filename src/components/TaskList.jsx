@@ -11,9 +11,10 @@ export default function TaskList() {
   // 1. État Global (Redux) : liste des tâches, chargement et erreur
   const { items, loading, error } = useSelector((state) => state.tasks);
 
-  // 2. État Local (useState) : filtres sélectionnés
+  // 2. État Local (useState) : filtres sélectionnés + recherche
   const [selectedStatus, setSelectedStatus] = useState('');
   const [selectedPriority, setSelectedPriority] = useState('');
+  const [query, setQuery] = useState('');
 
   // Fonction simple pour charger les tâches avec Axios et les ranger dans Redux
   const chargerTaches = async () => {
@@ -32,11 +33,21 @@ export default function TaskList() {
   }, []);
 
   // Filtrage JavaScript simple
+  const q = query.trim().toLowerCase();
   const filteredItems = items.filter(
     (t) =>
       (!selectedStatus || t.status === selectedStatus) &&
-      (!selectedPriority || t.priority === selectedPriority)
+      (!selectedPriority || t.priority === selectedPriority) &&
+      (!q ||
+        t.title.toLowerCase().includes(q) ||
+        (t.description || '').toLowerCase().includes(q))
   );
+
+  const doneCount = items.filter((t) => t.status === 'Terminee').length;
+  const pct = items.length ? Math.round((doneCount / items.length) * 100) : 0;
+
+  const countFor = (status) =>
+    status ? items.filter((t) => t.status === status).length : items.length;
 
   return (
     <section className="list-section">
@@ -47,14 +58,20 @@ export default function TaskList() {
             Données MongoDB récupérées via Axios (auteur affiché grâce à populate)
           </p>
         </div>
+      </div>
+
+      <div className="toolbar">
+        <label className="search">
+          <span aria-hidden="true">⌕</span>
+          <input
+            type="search"
+            placeholder="Rechercher une tâche..."
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+          />
+        </label>
 
         <div className="filter-box">
-          <select value={selectedStatus} onChange={(e) => setSelectedStatus(e.target.value)}>
-            <option value="">Tous les statuts</option>
-            {STATUSES.map((s) => (
-              <option key={s} value={s}>{STATUS_LABELS[s]}</option>
-            ))}
-          </select>
           <select value={selectedPriority} onChange={(e) => setSelectedPriority(e.target.value)}>
             <option value="">Toutes priorités</option>
             {PRIORITIES.map((p) => (
@@ -63,6 +80,33 @@ export default function TaskList() {
           </select>
         </div>
       </div>
+
+      <div className="chips" role="tablist" aria-label="Filtrer par statut">
+        {['', ...STATUSES].map((s) => (
+          <button
+            key={s || 'all'}
+            role="tab"
+            aria-selected={selectedStatus === s}
+            className={selectedStatus === s ? 'chip active' : 'chip'}
+            onClick={() => setSelectedStatus(s)}
+          >
+            {s ? STATUS_LABELS[s] : 'Toutes'}
+            <em>{countFor(s)}</em>
+          </button>
+        ))}
+      </div>
+
+      {items.length > 0 && (
+        <div className="progress">
+          <div className="progress-meta">
+            <span>Progression globale</span>
+            <b>{doneCount}/{items.length} terminées · {pct}%</b>
+          </div>
+          <div className="progress-track">
+            <div className="progress-fill" style={{ '--pct': `${pct}%` }} />
+          </div>
+        </div>
+      )}
 
       {/* CAS 1 : Alerte en cas d'erreur réseau */}
       {error && (
@@ -83,6 +127,11 @@ export default function TaskList() {
         <div className="loading-box">
           <div className="spinner"></div>
           <p>Chargement des tâches depuis l'API Express...</p>
+          <div className="skeleton-stack">
+            <div className="skeleton" />
+            <div className="skeleton" />
+            <div className="skeleton" />
+          </div>
         </div>
       )}
 
@@ -97,8 +146,8 @@ export default function TaskList() {
       {/* CAS 4 : Grille des tâches */}
       {!loading && filteredItems.length > 0 && (
         <div className="articles-grid">
-          {filteredItems.map((task) => (
-            <TaskCard key={task._id} task={task} />
+          {filteredItems.map((task, i) => (
+            <TaskCard key={task._id} task={task} index={i} />
           ))}
         </div>
       )}

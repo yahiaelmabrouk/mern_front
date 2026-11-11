@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useSelector, useDispatch } from 'react-redux';
 import axiosClient from '../api/axiosClient';
 import { setTasks, setLoading, setError } from '../redux/taskSlice';
@@ -8,6 +8,19 @@ export default function Navbar() {
   const { items, loading } = useSelector((state) => state.tasks);
   const { user } = useSelector((state) => state.auth);
   const dispatch = useDispatch();
+
+  // Thème sombre (défaut) / clair, mémorisé dans localStorage
+  const [theme, setTheme] = useState(
+    () => document.documentElement.getAttribute('data-theme') || 'dark'
+  );
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme);
+    try {
+      localStorage.setItem('theme', theme);
+    } catch (e) {
+      /* stockage indisponible : on ignore */
+    }
+  }, [theme]);
 
   const handleRefresh = async () => {
     try {
@@ -52,9 +65,18 @@ export default function Navbar() {
         </button>
 
         <div className="stat-pill">
-          <span className="stat-label">Tâches :</span>
+          <span className="stat-label">Tâches</span>
           <span className="stat-count">{doneCount}/{items.length}</span>
         </div>
+
+        <button
+          className="btn-theme"
+          onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+          aria-label="Changer de thème"
+          title="Changer de thème"
+        >
+          <span key={theme}>{theme === 'dark' ? '☀' : '☾'}</span>
+        </button>
       </div>
     </nav>
   );

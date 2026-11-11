@@ -11,3 +11,7 @@ export const STATUS_LABELS = {
 
 export const formatDate = (date) =>
   date ? new Date(date).toLocaleDateString('fr-FR') : '';
+
+// Une tâche est "en retard" si elle a une échéance dépassée et n'est pas terminée
+export const isLateTask = (task) =>
+  Boolean(task.dueDate) && task.status !== 'Terminee' && new Date(task.dueDate) < new Date();
